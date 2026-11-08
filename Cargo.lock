@@ -945,6 +945,7 @@ dependencies = [
  "libc",
  "proto",
  "serde",
+ "socket2",
  "tokio",
  "windows-sys 0.59.0",
 ]
@@ -2645,6 +2646,7 @@ name = "proto"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "socket2",
 ]
 
 [[package]]
@@ -2930,6 +2932,7 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "proto",
+ "socket2",
  "tokio",
 ]
 

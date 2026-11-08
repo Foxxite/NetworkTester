@@ -76,7 +76,9 @@ sudo ss -lunp | grep 7001           # UDP port is open?
 sudo ss -ltnp | grep 7002           # TCP port is open?
 ```
 
-To update: `git pull`, then run the script again. It rebuilds and restarts the service.
+To update: get the new project files (`git pull`, or copy the folder again), then run the script again. It rebuilds, installs the new binary and restarts the service.
+
+The script also writes `/etc/sysctl.d/99-nt-server.conf`. It raises `net.core.rmem_max` and `wmem_max` to 8 MB. Without this, Linux gives the server a small UDP buffer (about 400 KB). A small buffer drops packets at high rates, and the test then shows loss that the network did not cause. When the server starts, it prints the buffer size it got. It warns if the size is small.
 
 To remove: `sudo bash deploy/install-debian.sh --uninstall`. It keeps `/opt/nt-build` (about 1 GB). Delete it with `sudo rm -rf /opt/nt-build`.
 
@@ -198,6 +200,7 @@ Loss, delay and jitter apply to UDP only. The rate limit applies to UDP and TCP.
 ## Limits you should know
 
 - **Small writes at high rates can fail because of your PC**, not the network. If a small size fails but a larger size passes at the same rate, suspect the PC.
+- **High-rate UDP can hit a packets-per-second limit on the PC.** On our Windows test PC, UDP stopped near 48,000 packets per second (about 570 Mbps with 1472-byte packets) in both directions on a real network adapter. We have not proven the cause. Compare with TCP speed and with `iperf3` before you decide the network is the limit. Packets larger than the MTU (for example 8000 bytes) are split into fragments. Many networks drop fragments, so those cells often fail on a healthy link.
 - **Windows UDP pacing** uses a short busy-wait. A very high packet rate can use a full CPU core. The UDP sweep marks a cell "sender too slow" when the PC cannot reach the rate.
 - **MTU:** the server echoes the full packet. A smaller MTU on the return path only shows up if it drops the packet. IPv6 is not supported.
 - **TCP retransmit counts** are not shown yet.

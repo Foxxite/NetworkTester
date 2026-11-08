@@ -165,3 +165,15 @@ mod tests {
         assert_eq!(Header::read(&b), Some(h));
     }
 }
+
+/// Socket buffer size we ask for on UDP sockets. The OS default (64 KB on Windows, about 200 KB
+/// on Linux) overflows at high packet rates, and that shows up as false packet loss.
+pub const UDP_BUFFER: usize = 8 * 1024 * 1024;
+
+/// Ask for big receive and send buffers. Returns what the OS really gave us (receive, send).
+/// Linux caps the request at `net.core.rmem_max` / `wmem_max` unless those are raised.
+pub fn enlarge_buffers(sock: socket2::SockRef<'_>) -> (usize, usize) {
+    let _ = sock.set_recv_buffer_size(UDP_BUFFER);
+    let _ = sock.set_send_buffer_size(UDP_BUFFER);
+    (sock.recv_buffer_size().unwrap_or(0), sock.send_buffer_size().unwrap_or(0))
+}

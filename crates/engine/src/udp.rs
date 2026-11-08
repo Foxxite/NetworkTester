@@ -67,6 +67,7 @@ pub fn udp_upload_cell_blocking(server: &str, size: u16, mbps: f64, secs: f64) -
     }
     let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     let sock = UdpSocket::bind("0.0.0.0:0")?;
+    proto::enlarge_buffers(socket2::SockRef::from(&sock));
     sock.connect(resolve(server)?)?;
     let pps = pps_for(size, mbps);
     let mut buf = vec![0u8; size as usize];
@@ -113,6 +114,7 @@ pub fn udp_upload_cell_blocking(server: &str, size: u16, mbps: f64, secs: f64) -
 pub fn udp_download_cell_blocking(server: &str, size: u16, mbps: f64, secs: f64) -> io::Result<CellResult> {
     let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     let sock = UdpSocket::bind("0.0.0.0:0")?;
+    proto::enlarge_buffers(socket2::SockRef::from(&sock));
     sock.connect(resolve(server)?)?;
     let pps = pps_for(size, mbps);
     let count = (pps * secs).ceil() as u32;

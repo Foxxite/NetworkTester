@@ -58,6 +58,15 @@ async fn main() -> std::io::Result<()> {
     let udp = UdpSocket::bind(("0.0.0.0", UDP_PORT)).await?;
     let tcp = TcpListener::bind(("0.0.0.0", TCP_DATA_PORT)).await?;
     println!("udp echo on {UDP_PORT}, tcp data on {TCP_DATA_PORT}");
+    let (rcv, snd) = enlarge_buffers(socket2::SockRef::from(&udp));
+    println!("udp socket buffers: receive {} KB, send {} KB", rcv / 1024, snd / 1024);
+    if rcv < 4 * 1024 * 1024 {
+        eprintln!(
+            "warning: the UDP receive buffer is small. Fast UDP uploads may show packet loss that the \
+             network did not cause. On Linux, raise it: sudo sysctl -w net.core.rmem_max=8388608 \
+             net.core.wmem_max=8388608, then restart the server."
+        );
+    }
 
     tokio::spawn(async move {
         loop {

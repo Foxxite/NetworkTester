@@ -29,7 +29,7 @@ if [ "${1:-}" = "--uninstall" ]; then
         rm -f "$UNIT"
         systemctl daemon-reload
     fi
-    rm -f "$BIN"
+    rm -f "$BIN" /etc/sysctl.d/99-nt-server.conf
     id ntserver >/dev/null 2>&1 && userdel ntserver || true
     if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
         ufw delete allow 7001/udp >/dev/null 2>&1 || true
@@ -68,11 +68,20 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
     ufw allow 7002/tcp
 fi
 
+echo "==> Raising the UDP buffer limits (so fast UDP tests do not show false loss)"
+cat > /etc/sysctl.d/99-nt-server.conf <<'EOF'
+net.core.rmem_max=8388608
+net.core.wmem_max=8388608
+EOF
+sysctl -p /etc/sysctl.d/99-nt-server.conf >/dev/null 2>&1 \
+    || echo "Could not apply the sysctl settings now (normal inside a container). They apply at the next boot."
+
 if have_systemd; then
     echo "==> Starting the service"
     install -m 0644 "$REPO/deploy/nt-server.service" "$UNIT"
     systemctl daemon-reload
-    systemctl enable --now nt-server
+    systemctl enable nt-server
+    systemctl restart nt-server   # also picks up a new binary when you run this script again
     sleep 1
     systemctl --no-pager --lines=0 status nt-server || true
 else
