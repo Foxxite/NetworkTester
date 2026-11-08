@@ -1,8 +1,10 @@
 services:
   nt-server:
     build: { context: ., dockerfile: docker/Dockerfile }
+    restart: unless-stopped
     ports:
-      - "7000:7000/tcp"
       - "7001:7001/udp"
       - "7002:7002/tcp"
-    # On a Linux host, use network_mode: host instead of ports for better UDP accuracy.
+    # On a Linux host, replace "ports" with the line below. Docker NAT adds delay and can drop
+    # UDP bursts, which spoils the measurements.
+    # network_mode: host
