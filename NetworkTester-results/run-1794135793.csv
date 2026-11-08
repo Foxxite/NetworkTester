@@ -1,0 +1,66 @@
+test,size_bytes,target_mbps,goodput_mbps,loss_pct,jitter_ms,rtt_idle_ms,rtt_load_p95_ms,note
+udp_up,64,1,0.993,0.333,1.1218,,,clean
+udp_up,64,10,9.929,0.294,0.5068,,,clean
+udp_up,64,50,34.662,29.777,0.7534,,,loss above 1%
+udp_up,64,100,34.693,64.888,3.4398,,,loss above 1%
+udp_up,512,1,1.000,0.000,1.0265,,,clean
+udp_up,512,10,9.914,0.369,1.1246,,,clean
+udp_up,512,50,47.039,4.350,2.3309,,,loss above 1%
+udp_up,512,100,47.264,52.145,0.8242,,,loss above 1%
+udp_up,1472,1,1.001,0.588,4.3414,,,clean
+udp_up,1472,10,9.911,0.353,1.0205,,,clean
+udp_up,1472,50,49.080,0.942,3.8513,,,clean
+udp_up,1472,100,48.807,50.471,2.4069,,,loss above 1%
+udp_up,1472,500,48.851,90.093,1.4536,,,loss above 1%
+udp_up,4000,1,0.000,100.000,0.0000,,,loss above 1%
+udp_up,4000,10,0.000,100.000,0.0000,,,loss above 1%
+udp_down,64,1,0.994,0.205,0.0689,,,clean
+udp_down,64,10,9.937,0.312,0.2812,,,clean
+udp_down,64,50,34.607,29.863,0.6008,,,loss above 1%
+udp_down,64,100,34.645,64.142,2.3374,,,loss above 1%
+udp_down,512,1,1.000,0.000,0.1249,,,clean
+udp_down,512,10,9.934,0.266,0.0731,,,clean
+udp_down,512,50,47.073,4.858,1.2028,,,loss above 1%
+udp_down,512,100,47.155,52.295,0.1047,,,loss above 1%
+udp_down,1472,1,0.992,0.000,0.3261,,,clean
+udp_down,1472,10,9.942,0.353,0.0603,,,clean
+udp_down,1472,50,48.503,1.825,1.3848,,,loss above 1%
+udp_down,1472,100,48.964,50.683,2.4010,,,loss above 1%
+udp_down,4000,1,0.000,100.000,0.0000,,,loss above 1%
+udp_down,4000,10,0.000,100.000,0.0000,,,loss above 1%
+tcp_up,64,1,1.000,,,0.161,0.178,clean
+tcp_up,64,10,10.000,,,0.173,0.228,clean
+tcp_up,64,50,49.987,,,0.176,0.815,clean
+tcp_up,64,100,44.531,,,0.190,30.184,goodput below 90% of target
+tcp_up,64,500,44.947,,,0.206,31.162,goodput below 90% of target
+tcp_up,1024,1,1.000,,,0.169,0.185,clean
+tcp_up,1024,10,10.002,,,0.177,0.167,clean
+tcp_up,1024,50,50.004,,,0.179,0.211,clean
+tcp_up,1024,100,44.671,,,0.167,30.294,goodput below 90% of target
+tcp_up,1024,500,43.850,,,0.172,31.100,goodput below 90% of target
+tcp_up,16384,1,1.000,,,0.177,0.222,clean
+tcp_up,16384,10,10.003,,,0.172,0.197,clean
+tcp_up,16384,50,50.004,,,0.202,0.176,clean
+tcp_up,16384,100,43.824,,,0.206,30.334,goodput below 90% of target
+tcp_up,16384,500,45.655,,,0.155,31.091,goodput below 90% of target
+tcp_up,65000,1,1.000,,,0.246,0.222,clean
+tcp_up,65000,10,10.003,,,0.159,0.242,clean
+tcp_up,65000,50,50.019,,,0.158,0.219,clean
+tcp_up,65000,100,44.518,,,0.169,30.526,goodput below 90% of target
+tcp_up,65000,500,44.870,,,0.197,30.135,goodput below 90% of target
+tcp_down,64,1,0.997,,,0.207,0.536,clean
+tcp_down,64,10,9.919,,,0.191,1.709,clean
+tcp_down,64,50,43.011,,,0.155,1.336,goodput below 90% of target
+tcp_down,64,100,43.847,,,0.175,1.538,goodput below 90% of target
+tcp_down,1024,1,1.002,,,0.149,0.248,clean
+tcp_down,1024,10,9.958,,,0.192,0.370,clean
+tcp_down,1024,50,43.084,,,0.178,30.155,goodput below 90% of target
+tcp_down,1024,100,43.204,,,0.174,28.887,goodput below 90% of target
+tcp_down,16384,1,0.980,,,0.158,0.229,clean
+tcp_down,16384,10,10.013,,,0.197,0.251,clean
+tcp_down,16384,50,42.760,,,0.143,30.400,goodput below 90% of target
+tcp_down,16384,100,42.246,,,0.185,31.015,goodput below 90% of target
+tcp_down,65000,1,0.582,,,0.194,0.252,goodput below 90% of target
+tcp_down,65000,10,9.900,,,0.199,0.265,clean
+tcp_down,65000,50,42.368,,,0.161,30.567,goodput below 90% of target
+tcp_down,65000,100,42.743,,,0.171,30.625,goodput below 90% of target

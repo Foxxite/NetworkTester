@@ -1,0 +1,12 @@
+[package]
+name = "network-tester"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+engine = { path = "../engine" }
+proto = { path = "../proto" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+eframe = "0.37.0"
+egui_plot = "0.38.0"

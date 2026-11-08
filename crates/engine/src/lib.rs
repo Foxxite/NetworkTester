@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct PingStats {
     pub sent: u32,
     pub lost: u32,
@@ -45,12 +45,27 @@ pub fn summarize(rtts: &[f64], sent: u32) -> PingStats {
 }
 
 pub async fn udp_ping(server: &str, count: u32, interval: Duration) -> std::io::Result<PingStats> {
+    udp_ping_ctl(server, count, interval, &std::sync::atomic::AtomicBool::new(false)).await
+}
+
+/// Same as `udp_ping`, but ends early when `stop` is set (stats cover the packets sent so far).
+pub async fn udp_ping_ctl(
+    server: &str,
+    count: u32,
+    interval: Duration,
+    stop: &std::sync::atomic::AtomicBool,
+) -> std::io::Result<PingStats> {
     let sock = UdpSocket::bind("0.0.0.0:0").await?;
     sock.connect((server, UDP_PORT)).await?;
     let start = Instant::now();
     let mut rtts = Vec::new();
     let mut buf = [0u8; 64];
+    let mut sent = 0;
     for seq in 0..count {
+        if stop.load(std::sync::atomic::Ordering::Relaxed) {
+            break;
+        }
+        sent += 1;
         let h = Header { session: 1, seq, send_ts_ns: start.elapsed().as_nanos() as u64, size: 64, flags: FLAG_ECHO };
         h.write(&mut buf);
         let t0 = Instant::now();
@@ -62,16 +77,16 @@ pub async fn udp_ping(server: &str, count: u32, interval: Duration) -> std::io::
         }
         tokio::time::sleep(interval).await;
     }
-    Ok(summarize(&rtts, count))
+    Ok(summarize(&rtts, sent))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub enum Direction {
     Download,
     Upload,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct SpeedResult {
     pub mbps: f64,
     pub bytes: u64,
@@ -87,12 +102,27 @@ pub async fn tcp_speed(
     secs: f64,
     warmup: f64,
 ) -> std::io::Result<SpeedResult> {
+    tcp_speed_live(server, dir, streams, secs, warmup, &std::sync::atomic::AtomicBool::new(false), |_, _| {}).await
+}
+
+/// Like `tcp_speed`, but calls `on_sample(seconds, mbps)` every 250 ms (warm-up included, for a
+/// live graph) and ends early when `stop` is set.
+pub async fn tcp_speed_live(
+    server: &str,
+    dir: Direction,
+    streams: usize,
+    secs: f64,
+    warmup: f64,
+    user_stop: &std::sync::atomic::AtomicBool,
+    mut on_sample: impl FnMut(f64, f64),
+) -> std::io::Result<SpeedResult> {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
 
     let total = Arc::new(AtomicU64::new(0));
+    let all = Arc::new(AtomicU64::new(0)); // every byte, for the live graph
     let counting = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let mut tasks = Vec::new();
@@ -100,7 +130,7 @@ pub async fn tcp_speed(
         let mut s = TcpStream::connect((server, TCP_DATA_PORT)).await?;
         s.set_nodelay(true)?;
         s.write_all(&[if dir == Direction::Download { MODE_SOURCE } else { MODE_SINK }]).await?;
-        let (total, counting, stop) = (total.clone(), counting.clone(), stop.clone());
+        let (total, counting, stop, all) = (total.clone(), counting.clone(), stop.clone(), all.clone());
         tasks.push(tokio::spawn(async move {
             let mut buf = vec![0u8; 65536];
             while !stop.load(Ordering::Relaxed) {
@@ -114,18 +144,31 @@ pub async fn tcp_speed(
                         Ok(n) => n,
                     },
                 };
+                all.fetch_add(n as u64, Ordering::Relaxed);
                 if counting.load(Ordering::Relaxed) {
                     total.fetch_add(n as u64, Ordering::Relaxed);
                 }
             }
         }));
     }
-    tokio::time::sleep(Duration::from_secs_f64(warmup)).await;
-    counting.store(true, Ordering::Relaxed);
-    let t0 = Instant::now();
-    tokio::time::sleep(Duration::from_secs_f64(secs - warmup)).await;
+    let begin = Instant::now();
+    let (mut last_t, mut last_bytes) = (0.0f64, 0u64);
+    let mut t0 = Instant::now();
+    let mut warm = true;
+    while begin.elapsed().as_secs_f64() < secs && !user_stop.load(Ordering::Relaxed) {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let t = begin.elapsed().as_secs_f64();
+        let b = all.load(Ordering::Relaxed);
+        on_sample(t, (b - last_bytes) as f64 * 8.0 / (t - last_t).max(1e-6) / 1e6);
+        (last_t, last_bytes) = (t, b);
+        if warm && t >= warmup {
+            warm = false;
+            counting.store(true, Ordering::Relaxed);
+            t0 = Instant::now();
+        }
+    }
     let bytes = total.load(Ordering::Relaxed);
-    let elapsed = t0.elapsed().as_secs_f64();
+    let elapsed = t0.elapsed().as_secs_f64().max(1e-6);
     stop.store(true, Ordering::Relaxed);
     for t in tasks {
         t.abort();

@@ -7,13 +7,13 @@ use std::time::{Duration, Instant};
 
 static NEXT_SESSION: AtomicU32 = AtomicU32::new(1000);
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub enum UdpDir {
     Upload,
     Download,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CellResult {
     pub dir: UdpDir,
     pub size: u16,
@@ -119,7 +119,7 @@ pub fn udp_download_cell_blocking(server: &str, size: u16, mbps: f64, secs: f64)
     let mut req = [0u8; HEADER_LEN + 10];
     Header { session, seq: 0, send_ts_ns: 0, size: req.len() as u16, flags: FLAG_SRC_REQ }.write(&mut req);
     req[HEADER_LEN..HEADER_LEN + 2].copy_from_slice(&size.to_be_bytes());
-    req[HEADER_LEN + 2..HEADER_LEN + 6].copy_from_slice(&(pps as u32).to_be_bytes());
+    req[HEADER_LEN + 2..HEADER_LEN + 6].copy_from_slice(&(pps.round().max(1.0) as u32).to_be_bytes());
     req[HEADER_LEN + 6..HEADER_LEN + 10].copy_from_slice(&count.to_be_bytes());
     let start = Instant::now();
     sock.send(&req)?;

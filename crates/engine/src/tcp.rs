@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct TcpCell {
     pub dir: Direction,
     pub size: u16,
@@ -121,7 +121,7 @@ fn download_load(server: &str, size: u16, pps: f64, secs: f64) -> io::Result<(u6
     let mut s = connect(server, MODE_PACED)?;
     let mut req = [0u8; 6];
     req[0..2].copy_from_slice(&size.to_be_bytes());
-    req[2..6].copy_from_slice(&(pps as u32).to_be_bytes());
+    req[2..6].copy_from_slice(&(pps.ceil() as u32).to_be_bytes());
     s.write_all(&req)?;
     s.set_read_timeout(Some(Duration::from_millis(1500)))?;
     let mut buf = vec![0u8; 65536];
@@ -239,4 +239,10 @@ mod tests {
         assert_eq!(b[0].last_good_mbps, Some(50.0));
         assert_eq!(b[0].first_bad_mbps, Some(100.0));
     }
+}
+
+/// TCP ping: round trips of 8 bytes on an open connection (the handshake is not counted).
+pub fn tcp_ping_blocking(server: &str, count: u32, stop: &AtomicBool) -> crate::PingStats {
+    let rtts = tcp_rtts(server, stop, count as usize);
+    crate::summarize(&rtts, count)
 }
