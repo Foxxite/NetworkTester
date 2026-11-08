@@ -146,6 +146,28 @@ powershell -ExecutionPolicy Bypass -File installer/build-installer.ps1
 
 The script builds the app in release mode and writes `dist\NetworkTester-Setup-<version>.exe`. The version number comes from `crates/client/Cargo.toml`. The installer description is in `installer/NetworkTester.iss`.
 
+### Automatic builds and releases (GitHub Actions)
+
+The workflow `.github/workflows/release.yml` builds the installer on a Windows runner.
+
+- **Every pull request and manual run** (Actions tab > "Build and release the Windows installer" > Run workflow) runs the unit tests, builds the installer, and keeps it as a downloadable workflow artifact.
+- **A version tag** also publishes a GitHub release with the installer and a `.sha256` checksum file.
+
+To make a release:
+
+1. Change `version` in `crates/client/Cargo.toml` (for example to `0.2.0`) and run `cargo build` once, so `Cargo.lock` updates.
+2. Commit, then tag and push:
+
+   ```bash
+   git commit -am "Release 0.2.0"
+   git tag v0.2.0
+   git push origin main v0.2.0
+   ```
+
+The workflow stops with an error if the tag and the version in `Cargo.toml` do not match.
+
+The workflow downloads Inno Setup 7.1.1 from its official GitHub release. It checks the file against a pinned SHA-256 hash and a valid digital signature before it runs it. To move to a newer Inno Setup, change `INNO_URL` and `INNO_SHA256` at the top of the workflow.
+
 ## Build
 
 You need Rust (rustup).

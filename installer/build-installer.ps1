@@ -20,7 +20,7 @@ if (-not $iscc) {
 if (-not $iscc) { throw "Inno Setup (ISCC.exe) not found. Install it from https://jrsoftware.org/isdl.php" }
 
 Write-Host "==> Building the app (release)"
-cargo build --release -p network-tester
+cargo build --release --locked -p network-tester
 if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 
 Write-Host "==> Building the installer (version $version)"

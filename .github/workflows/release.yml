@@ -1,0 +1,122 @@
+name: Build and release the Windows installer
+
+# - Every pull request and manual run builds the installer and keeps it as a workflow artifact.
+# - Pushing a tag like v0.2.0 also publishes it as a GitHub release.
+#   The tag must match the version in crates/client/Cargo.toml (0.2.0 for v0.2.0).
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Inno Setup is pinned to the exact file we tested, and checked by hash and signature.
+  INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe
+  INNO_SHA256: 8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $tagVersion = $env:TAG -replace '^v', ''
+          $cargoVersion = (Select-String -Path crates/client/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ($tagVersion -ne $cargoVersion) {
+            throw "Tag $env:TAG does not match the version $cargoVersion in crates/client/Cargo.toml. Change one of them."
+          }
+
+      - name: Update Rust
+        shell: pwsh
+        run: rustup update stable --no-self-update
+
+      - name: Cache Cargo files and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run unit tests
+        run: cargo test --locked -p proto -p engine -p impair
+
+      - name: Install Inno Setup (checked by hash and signature)
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          Invoke-WebRequest -Uri $env:INNO_URL -OutFile $file
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:INNO_SHA256) { throw "Inno Setup download has the wrong hash: $hash" }
+          $sig = Get-AuthenticodeSignature $file
+          if ($sig.Status -ne 'Valid') { throw "Inno Setup signature is not valid: $($sig.Status)" }
+          Start-Process $file -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-' -Wait
+          Get-ChildItem "$env:ProgramFiles\Inno Setup*\ISCC.exe" | Select-Object -ExpandProperty FullName
+
+      - name: Build the installer
+        shell: pwsh
+        run: ./installer/build-installer.ps1
+
+      - name: Write the SHA-256 checksum
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter 'NetworkTester-Setup-*.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'The installer was not built.' }
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($exe.Name)" | Out-File -Encoding ascii "$($exe.FullName).sha256"
+          Get-Content "$($exe.FullName).sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NetworkTester-Setup
+          path: dist/NetworkTester-Setup-*
+          if-no-files-found: error
+
+  release:
+    # Only for tags like v0.2.0. This is the only job with permission to write.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: NetworkTester-Setup
+          path: dist
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > notes.md <<'EOF'
+          ## Install
+
+          Download `NetworkTester-Setup-*.exe` below and run it. It installs for your user and needs no admin rights. Needs 64-bit Windows 10 or 11.
+
+          Windows may show "Windows protected your PC" (SmartScreen), because the installer is not code-signed. Click **More info**, then **Run anyway**. To check the download first, compare its SHA-256 hash with the `.sha256` file:
+
+          ```powershell
+          Get-FileHash .\NetworkTester-Setup-*.exe -Algorithm SHA256
+          ```
+
+          You also need the Network Tester server on the machine at the other end of the link. See the README (Docker, or Ubuntu/Debian without Docker).
+
+          ## What changed
+          EOF
+          gh release create "$TAG" --title "Network Tester $TAG" --notes-file notes.md --generate-notes dist/NetworkTester-Setup-*
