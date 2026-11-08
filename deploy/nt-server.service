@@ -1,0 +1,25 @@
+[Unit]
+Description=NetworkTester server (UDP 7001, TCP 7002)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/nt-server
+User=ntserver
+Group=ntserver
+Restart=on-failure
+RestartSec=2
+LimitNOFILE=65536
+
+# The server needs no files and no special rights. Keep it locked down.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

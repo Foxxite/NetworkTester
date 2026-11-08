@@ -19,18 +19,110 @@ A web page cannot do this test. A browser cannot send raw UDP, set the packet si
 
 ## Quick start
 
-1. Start the server on a machine at the **other end** of the link you want to test:
+1. Start the server on a machine at the **other end** of the link you want to test. Pick one:
 
-   ```bash
-   docker compose up -d --build
-   ```
+   - **Docker:** `docker compose up -d --build`
+   - **Ubuntu/Debian without Docker:** `sudo bash deploy/install-debian.sh` (see [below](#run-the-server-on-ubuntudebian-without-docker))
 
    Open these ports in the firewall: `7001/udp` and `7002/tcp`.
 
 2. On Windows, run `target\release\network-tester.exe` (build it first, see below).
-3. Type the server address and press **Start**.
+3. Type the server address and press **Start test**.
+
+## The Windows app
+
+- **Overview:** download, upload, latency and jitter at a glance. It also shows how well the link suits video streaming, gaming and video calls, and a list of what was found. When an earlier run exists, each number shows the change against it.
+- **Speed:** a live chart of the speed test.
+- **Latency & jitter:** UDP ping, TCP ping and jitter in detail.
+- **Breaking point:** heat maps of packet size against send rate. Green is clean, amber is an early warning, red is broken. Hover a cell for the details.
+- **Choose what to test** (under the server box) lets you skip tests. The time shown next to the Start button is an estimate.
+- **Copy summary** puts the main numbers on the clipboard. **Light mode / Dark mode** switches the theme.
+
+Test flags (optional): `--server <host>`, `--autostart`, `--light`, `--tab <0-3>`.
 
 For accurate results, run the server on a Linux host with `network_mode: host`. See `docker-compose.yml`. Docker Desktop on Windows adds NAT. NAT can drop fast UDP bursts. In our test, UDP upload at 500 Mbps lost 44-79% of packets through Docker Desktop. The same test on a direct server was clean.
+
+## Run the server on Ubuntu/Debian without Docker
+
+The server is one small program. It needs no libraries at run time. Tested on Ubuntu 24.04.
+
+### Option A: the install script (easiest)
+
+On the server, get the project folder (for example `git clone` it or copy it with `scp`). Then:
+
+```bash
+cd NetworkTester
+sudo bash deploy/install-debian.sh
+```
+
+The script does these steps:
+
+1. Installs `build-essential`, `curl`, `ca-certificates` and `pkg-config` with apt.
+2. Installs Rust with rustup (minimal profile) into `/opt/nt-build`, if `cargo` is not found.
+3. Builds the server. The first build takes a few minutes.
+4. Installs it as `/usr/local/bin/nt-server`.
+5. Creates a system user `ntserver` and a systemd service `nt-server` that starts at boot.
+6. Opens `7001/udp` and `7002/tcp` in `ufw`, if `ufw` is active.
+
+When it ends, it prints the addresses of the machine. Use one of them in the Windows app.
+
+Useful commands:
+
+```bash
+systemctl status nt-server          # is it running?
+journalctl -u nt-server -f          # logs
+sudo systemctl restart nt-server
+sudo ss -lunp | grep 7001           # UDP port is open?
+sudo ss -ltnp | grep 7002           # TCP port is open?
+```
+
+To update: `git pull`, then run the script again. It rebuilds and restarts the service.
+
+To remove: `sudo bash deploy/install-debian.sh --uninstall`. It keeps `/opt/nt-build` (about 1 GB). Delete it with `sudo rm -rf /opt/nt-build`.
+
+### Option B: by hand
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl ca-certificates pkg-config
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # choose the default install
+. "$HOME/.cargo/env"
+
+cd NetworkTester
+cargo build --release --locked -p server
+sudo install -m 0755 target/release/server /usr/local/bin/nt-server
+
+# run it in the foreground to try it
+nt-server
+```
+
+To run it as a service, copy `deploy/nt-server.service` to `/etc/systemd/system/`, create the user, and start it:
+
+```bash
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin ntserver
+sudo cp deploy/nt-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now nt-server
+```
+
+### Firewall
+
+Open **UDP 7001** and **TCP 7002**.
+
+```bash
+sudo ufw allow 7001/udp
+sudo ufw allow 7002/tcp
+```
+
+On a cloud server (AWS, Azure, Google Cloud, and others), also open these ports in the provider's firewall or security group. This is the most common reason for "no answer" from the server.
+
+### Check from the Windows side
+
+```bash
+nt-cli <server-address> ping
+```
+
+If this shows 0 packets lost, the UDP port is open. Then try `nt-cli <server-address> speed` to check the TCP port.
 
 ## Build
 
@@ -122,4 +214,5 @@ crates/cli       nt-cli
 crates/client    Windows app (egui)
 crates/impair    test proxy
 docker/          Dockerfile (release) and test.Dockerfile (Linux test image)
+deploy/          Ubuntu/Debian install script and systemd service
 ```
