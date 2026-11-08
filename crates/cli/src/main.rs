@@ -1,4 +1,5 @@
 use engine::Direction;
+// Commands: ping | jitter | speed | udp-sweep[-down] | tcp-sweep[-down] | mtu | all
 use std::time::Duration;
 
 #[tokio::main]
@@ -52,6 +53,43 @@ async fn main() -> std::io::Result<()> {
         .unwrap()?;
         for line in engine::summary(&engine::find_breaks(&cells)) {
             println!("{line}");
+        }
+    }
+    if what == "tcp-sweep" || what == "tcp-sweep-down" {
+        // Optional: nt-cli <server> tcp-sweep <sizes,comma> <rates,comma> <secs>
+        let mut cfg = engine::TcpSweepConfig::default();
+        if what == "tcp-sweep-down" {
+            cfg.dir = Direction::Download;
+        }
+        if let Some(s) = std::env::args().nth(3) {
+            cfg.sizes = s.split(',').filter_map(|x| x.parse().ok()).collect();
+        }
+        if let Some(s) = std::env::args().nth(4) {
+            cfg.rates_mbps = s.split(',').filter_map(|x| x.parse().ok()).collect();
+        }
+        if let Some(s) = std::env::args().nth(5).and_then(|x| x.parse().ok()) {
+            cfg.secs = s;
+        }
+        println!("{:>6} {:>8} {:>8} {:>9} {:>9} {:>9}", "size", "target", "goodput", "rtt idle", "rtt p95", "stall ms");
+        let srv = server.clone();
+        let cells = tokio::task::spawn_blocking(move || {
+            let stop = std::sync::atomic::AtomicBool::new(false);
+            engine::tcp_sweep_blocking(&srv, &cfg, &stop, |c| {
+                println!("{:>6} {:>8.1} {:>8.1} {:>9.2} {:>9.2} {:>9.0}{}", c.size, c.target_mbps, c.goodput_mbps,
+                    c.rtt_idle_ms, c.rtt_load_p95_ms, c.max_stall_ms, "");
+            })
+        })
+        .await
+        .unwrap()?;
+        for line in engine::summary(&engine::tcp_find_breaks(&cells)) {
+            println!("{line}");
+        }
+    }
+    if what == "mtu" || what == "all" {
+        let srv = server.clone();
+        match tokio::task::spawn_blocking(move || engine::probe_path_mtu_blocking(&srv)).await.unwrap()? {
+            Some(m) => println!("MTU    {m} bytes (largest unfragmented IPv4 packet)"),
+            None => println!("MTU    below 576 bytes, or the server did not answer"),
         }
     }
     Ok(())

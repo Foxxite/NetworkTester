@@ -14,6 +14,7 @@ struct Cfg {
     delay: f64,   // seconds
     jitter: f64,  // seconds, +- uniform
     queue: f64,   // seconds of buffer at the bottleneck
+    mtu: usize,   // 0 = none; UDP packets whose IP size is larger are dropped
 }
 
 struct Link {
@@ -30,6 +31,9 @@ impl Link {
     }
     /// When to deliver this packet, or None if the link drops it.
     fn plan(&mut self, now: Instant, len: usize, c: &Cfg) -> Option<Instant> {
+        if c.mtu > 0 && len + 28 > c.mtu {
+            return None;
+        }
         if self.rand() < c.loss {
             return None;
         }
@@ -56,6 +60,39 @@ async fn deliver(sock: Arc<UdpSocket>, to: Option<SocketAddr>, data: Vec<u8>, at
     };
 }
 
+/// Copy bytes while holding the rate. The bucket is shared by all connections in one direction,
+/// so a bulk transfer and an RTT probe compete for the same capacity.
+async fn pump(
+    mut r: tokio::net::tcp::OwnedReadHalf,
+    mut w: tokio::net::tcp::OwnedWriteHalf,
+    bucket: Arc<Mutex<Instant>>,
+    rate_bps: f64,
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut buf = vec![0u8; 16 * 1024];
+    while let Ok(n) = r.read(&mut buf).await {
+        if n == 0 {
+            break;
+        }
+        if rate_bps > 0.0 {
+            let until = {
+                let mut g = bucket.lock().unwrap();
+                let start = (*g).max(Instant::now());
+                *g = start + Duration::from_secs_f64(n as f64 * 8.0 / rate_bps);
+                *g
+            };
+            // Windows timers round short sleeps up to ~15 ms. Let a small debt build up and
+            // sleep only when it is large, so the average rate stays right.
+            if until.saturating_duration_since(Instant::now()) > Duration::from_millis(16) {
+                tokio::time::sleep_until(until.into()).await;
+            }
+        }
+        if w.write_all(&buf[..n]).await.is_err() {
+            break;
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let a: Vec<String> = std::env::args().collect();
@@ -66,11 +103,30 @@ async fn main() -> std::io::Result<()> {
         delay: arg(5, 0.0) / 1e3,
         jitter: arg(6, 0.0) / 1e3,
         queue: arg(7, 20.0) / 1e3,
+        mtu: arg(8, 0.0) as usize,
     };
     let listen = format!("{}:7001", a.get(1).expect("listen_ip"));
     let upstream: SocketAddr = format!("{}:7001", a.get(2).expect("upstream_ip")).parse().unwrap();
     let front = Arc::new(UdpSocket::bind(&listen).await?);
     println!("impair on {listen} -> {upstream}");
+
+    // TCP relay on 7002 with a shared rate limit per direction (loss/delay are not applied to TCP).
+    let tcp_listen = format!("{}:7002", a.get(1).unwrap());
+    let tcp_up = format!("{}:7002", a.get(2).unwrap());
+    let tcp_front = tokio::net::TcpListener::bind(&tcp_listen).await?;
+    let rate = cfg.rate_bps;
+    tokio::spawn(async move {
+        let up_bucket = Arc::new(Mutex::new(Instant::now()));
+        let down_bucket = Arc::new(Mutex::new(Instant::now()));
+        while let Ok((client, _)) = tcp_front.accept().await {
+            let Ok(server) = tokio::net::TcpStream::connect(&tcp_up).await else { continue };
+            let _ = (client.set_nodelay(true), server.set_nodelay(true));
+            let (cr, cw) = client.into_split();
+            let (sr, sw) = server.into_split();
+            tokio::spawn(pump(cr, sw, up_bucket.clone(), rate));
+            tokio::spawn(pump(sr, cw, down_bucket.clone(), rate));
+        }
+    });
 
     let up_link = Arc::new(Mutex::new(Link { next_free: Instant::now(), rng: 0x9E3779B97F4A7C15 }));
     let down_link = Arc::new(Mutex::new(Link { next_free: Instant::now(), rng: 0xD1B54A32D192ED03 }));
@@ -111,7 +167,7 @@ mod tests {
     #[test]
     fn rate_limit_drops_burst() {
         let mut l = Link { next_free: Instant::now(), rng: 1 };
-        let c = Cfg { loss: 0.0, rate_bps: 10e6, delay: 0.0, jitter: 0.0, queue: 0.02 };
+        let c = Cfg { loss: 0.0, rate_bps: 10e6, delay: 0.0, jitter: 0.0, queue: 0.02, mtu: 0 };
         let now = Instant::now();
         // 1000-byte packets at 10 Mbps take ~0.8 ms each: 20 ms queue holds ~25.
         let kept = (0..100).filter(|_| l.plan(now, 1000, &c).is_some()).count();
@@ -120,7 +176,7 @@ mod tests {
     #[test]
     fn loss_rate_is_close() {
         let mut l = Link { next_free: Instant::now(), rng: 7 };
-        let c = Cfg { loss: 0.05, rate_bps: 0.0, delay: 0.0, jitter: 0.0, queue: 0.02 };
+        let c = Cfg { loss: 0.05, rate_bps: 0.0, delay: 0.0, jitter: 0.0, queue: 0.02, mtu: 0 };
         let now = Instant::now();
         let dropped = (0..20000).filter(|_| l.plan(now, 100, &c).is_none()).count();
         assert!((800..1200).contains(&dropped), "dropped {dropped}");

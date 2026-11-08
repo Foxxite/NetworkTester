@@ -27,6 +27,28 @@ async fn handle_tcp(mut s: TcpStream) -> std::io::Result<()> {
         MODE_SOURCE => loop {
             s.write_all(&buf).await?; // ends when the client closes
         },
+        MODE_PACED => {
+            let mut p = [0u8; 6];
+            s.read_exact(&mut p).await?;
+            let size = u16::from_be_bytes([p[0], p[1]]) as usize;
+            let pps = u32::from_be_bytes([p[2], p[3], p[4], p[5]]);
+            let mbps = pps as f64 * size as f64 * 8.0 / 1e6;
+            if size == 0 || pps == 0 || mbps > MAX_SRC_MBPS {
+                return Ok(());
+            }
+            let data = vec![0u8; size];
+            let start = Instant::now();
+            let mut sent: u64 = 0;
+            while start.elapsed().as_secs_f64() < MAX_SRC_SECS + 2.0 {
+                let due = ((start.elapsed().as_secs_f64() * pps as f64) as u64 + 1).min(sent + 4096);
+                while sent < due {
+                    s.write_all(&data).await?; // fails when the client closes
+                    sent += 1;
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }

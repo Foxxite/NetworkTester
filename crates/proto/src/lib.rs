@@ -96,6 +96,8 @@ impl RecvTracker {
 pub const MODE_ECHO: u8 = b'E';
 pub const MODE_SINK: u8 = b'U'; // client uploads, server discards
 pub const MODE_SOURCE: u8 = b'D'; // server sends, client downloads
+/// Followed by size(u16) pps(u32): the server writes `size` bytes `pps` times a second.
+pub const MODE_PACED: u8 = b'P';
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Header {

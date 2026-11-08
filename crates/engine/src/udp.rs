@@ -222,20 +222,31 @@ pub struct Break {
 
 /// For each size, find the highest clean rate and the first bad one.
 pub fn find_breaks(cells: &[CellResult]) -> Vec<Break> {
-    let mut sizes: Vec<u16> = cells.iter().map(|c| c.size).collect();
+    breaks_by(cells, |c| c.size, |c| c.target_mbps, |c, base| bad_reason(c, base.jitter_ms))
+}
+
+/// Generic break finder. `reason(cell, baseline_cell)` says why a cell is bad, or None.
+/// The baseline is the lowest-rate cell of the same size.
+pub fn breaks_by<T>(
+    cells: &[T],
+    size_of: impl Fn(&T) -> u16,
+    rate_of: impl Fn(&T) -> f64,
+    reason: impl Fn(&T, &T) -> Option<&'static str>,
+) -> Vec<Break> {
+    let mut sizes: Vec<u16> = cells.iter().map(&size_of).collect();
     sizes.dedup();
     sizes
         .into_iter()
         .map(|size| {
-            let mut row: Vec<&CellResult> = cells.iter().filter(|c| c.size == size).collect();
-            row.sort_by(|a, b| a.target_mbps.partial_cmp(&b.target_mbps).unwrap());
-            let base = row.first().map(|c| c.jitter_ms).unwrap_or(0.0);
+            let mut row: Vec<&T> = cells.iter().filter(|c| size_of(c) == size).collect();
+            row.sort_by(|a, b| rate_of(a).partial_cmp(&rate_of(b)).unwrap());
             let mut b = Break { size, last_good_mbps: None, first_bad_mbps: None, reason: None };
+            let Some(&base) = row.first() else { return b };
             for c in row {
-                match bad_reason(c, base) {
-                    None if b.first_bad_mbps.is_none() => b.last_good_mbps = Some(c.target_mbps),
+                match reason(c, base) {
+                    None if b.first_bad_mbps.is_none() => b.last_good_mbps = Some(rate_of(c)),
                     Some(r) if b.first_bad_mbps.is_none() => {
-                        b.first_bad_mbps = Some(c.target_mbps);
+                        b.first_bad_mbps = Some(rate_of(c));
                         b.reason = Some(r);
                     }
                     _ => {}
