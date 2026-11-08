@@ -26,7 +26,7 @@ A web page cannot do this test. A browser cannot send raw UDP, set the packet si
 
    Open these ports in the firewall: `7001/udp` and `7002/tcp`.
 
-2. On Windows, run `target\release\network-tester.exe` (build it first, see below).
+2. On Windows, install the app with `NetworkTester-Setup-<version>.exe` (see [Windows installer](#windows-installer)). Or run `target\release\network-tester.exe` after you build it.
 3. Type the server address and press **Start test**.
 
 ## The Windows app
@@ -126,6 +126,26 @@ nt-cli <server-address> ping
 
 If this shows 0 packets lost, the UDP port is open. Then try `nt-cli <server-address> speed` to check the TCP port.
 
+## Windows installer
+
+Share `dist\NetworkTester-Setup-<version>.exe` (about 6 MB). It is a normal setup wizard:
+
+- It installs for the current user and needs no admin rights. The wizard can install for all users instead.
+- It adds a Start Menu shortcut, and a desktop shortcut if you tick the box.
+- It adds an entry in Windows **Settings > Apps**, so you can uninstall it there. Uninstalling keeps your saved results.
+- Installing a newer version over an old one updates it.
+- It needs 64-bit Windows 10 or 11.
+
+**Windows may show a "Windows protected your PC" (SmartScreen) message.** The installer is not code-signed, because a signing certificate costs money. Click **More info**, then **Run anyway**. Only do this for a file you got from a source you trust. To remove the message for everyone, sign the installer with a code-signing certificate.
+
+To build the installer yourself you need Rust and [Inno Setup](https://jrsoftware.org/isdl.php). Then run:
+
+```bash
+powershell -ExecutionPolicy Bypass -File installer/build-installer.ps1
+```
+
+The script builds the app in release mode and writes `dist\NetworkTester-Setup-<version>.exe`. The version number comes from `crates/client/Cargo.toml`. The installer description is in `installer/NetworkTester.iss`.
+
 ## Build
 
 You need Rust (rustup).
@@ -180,7 +200,7 @@ nt-cli <server> tcp-sweep-down [sizes] [rates] [secs]
 
 ## Results
 
-Each run is saved in `NetworkTester-results\` next to where you start the app:
+Each run is saved in `%LOCALAPPDATA%\NetworkTester\results` (the **Open folder** button in the app opens it). The folder is the same whether you installed the app or run the `.exe` from anywhere. Uninstalling does not delete it.
 
 - `run-<time>.json` - everything, including the numbers shown in the Latency tab for comparison with the next run
 - `run-<time>.csv` - the sweep cells, for a spreadsheet
@@ -218,4 +238,5 @@ crates/client    Windows app (egui)
 crates/impair    test proxy
 docker/          Dockerfile (release) and test.Dockerfile (Linux test image)
 deploy/          Ubuntu/Debian install script and systemd service
+installer/       Inno Setup script and build script for the Windows installer
 ```

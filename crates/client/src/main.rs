@@ -288,7 +288,8 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1040.0, 780.0])
             .with_min_inner_size([760.0, 560.0])
-            .with_title("Network Tester"),
+            .with_title("Network Tester")
+            .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png")).expect("bad icon")),
         ..Default::default()
     };
     eframe::run_native("Network Tester", opts, Box::new(|_cc| Ok(Box::new(App::new()))))

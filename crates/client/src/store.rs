@@ -3,7 +3,8 @@ use engine::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-const DIR: &str = "NetworkTester-results";
+/// Fallback when no per-user folder is known (not the normal case on Windows).
+const FALLBACK_DIR: &str = "NetworkTester-results";
 
 #[derive(Default, Serialize)]
 pub struct Results {
@@ -57,8 +58,13 @@ impl Headline {
     }
 }
 
-fn dir() -> PathBuf {
-    PathBuf::from(DIR)
+/// Where results are saved: `%LOCALAPPDATA%\NetworkTester\results`. This folder is always writable,
+/// also when the app is installed in Program Files.
+pub fn dir() -> PathBuf {
+    match std::env::var_os("LOCALAPPDATA") {
+        Some(base) => PathBuf::from(base).join("NetworkTester").join("results"),
+        None => PathBuf::from(FALLBACK_DIR),
+    }
 }
 
 fn run_files() -> Vec<PathBuf> {
