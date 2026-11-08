@@ -1,0 +1,8 @@
+services:
+  nt-server:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    ports:
+      - "7000:7000/tcp"
+      - "7001:7001/udp"
+      - "7002:7002/tcp"
+    # On a Linux host, use network_mode: host instead of ports for better UDP accuracy.
